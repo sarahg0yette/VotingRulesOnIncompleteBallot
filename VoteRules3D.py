@@ -151,7 +151,7 @@ def gen_file(ballots,num,voter_count):
         data.append(temp_list)
         vc += 1
     
-    with open(r'C:\Users\sagbo\Desktop\summer2026\mainresearch\sim_ballots.csv', 'w', newline='', encoding='utf-8') as file: #specific path to my desktop, will have to change this
+    with open(r'C:\Users\sagbo\Desktop\summer2026\mainresearch\sim_ballots.csv', 'w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         writer.writerow(header)
         writer.writerows(data) 
@@ -165,14 +165,16 @@ def remove_randoms(file,m):
         
         for row in reader:
             temp_list = []
-            last_index = (m + 1) - random.randint(0, m-1) #randomize how many candidates will be removed 
+            last_index = m + 1
+            if random.randint(0,2) == 0: 
+                last_index = (m + 1) - random.randint(0, m-1) #randomize how many candidates will be removed 
             temp_list = row[:last_index] 
             new_data.append(temp_list)
     
     return new_data, header
             
 def gen_altered(data,header): 
-    with open(r'C:\Users\sagbo\Desktop\summer2026\mainresearch\altered_ballots.csv', 'w', newline='', encoding='utf-8') as file: #specific path to my desktop, will have to change this
+    with open(r'C:\Users\sagbo\Desktop\summer2026\mainresearch\altered_ballots.csv', 'w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         writer.writerow(header)
         writer.writerows(data)  
