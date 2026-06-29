@@ -135,8 +135,6 @@ class VoteResult3D:
             sorted_dict = sorted(distances, key = distances.get)
             self.ballots.append(sorted_dict)
 
-        for c in self.candidates:
-            print(c.id, c.x, c.y, c.z)
         
 def gen_file(ballots,num,voter_count): 
     #here num signifies how many candidate columns this should generate, voter count is number of voters
@@ -184,10 +182,8 @@ def gen_altered(data,header):
         
 def main():
     candidate_num = 5
-    voter_num = 500
+    voter_num = 1000
     test = VoteResult3D(voter_num, candidate_num, "2D", "normal") #this is num of voters, candidate, dimension, distribution
-    for i in range(5):
-        print(i, [c.id for c in test.ballots[i]])
     gen_file(test.ballots,candidate_num,voter_num) 
     data, header = remove_randoms('sim_ballots.csv',candidate_num)
     gen_altered(data,header)
