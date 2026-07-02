@@ -41,12 +41,12 @@ class VoteResult3D:
 
         #generate random coordinates of voters and candidates for different distributions
         if self.distribution == "normal":
-            x_voters = random.normal(30, 18,n)
-            x_candidates = random.normal(30, 18, m)
-            y_voters = random.normal(30, 18,n)
-            y_candidates = random.normal(30, 18, m)
-            z_voters = random.normal(30, 18,n)
-            z_candidates = random.normal(30, 18, m)
+            x_voters = random.normal(35, 18,n)
+            x_candidates = random.normal(35, 18, m)
+            y_voters = random.normal(35, 18,n)
+            y_candidates = random.normal(35, 18, m)
+            z_voters = random.normal(35, 18,n)
+            z_candidates = random.normal(35, 18, m)
             
             
         elif self.distribution == "poisson":
@@ -56,8 +56,7 @@ class VoteResult3D:
             y_candidates = random.poisson(30, m)
             z_voters = random.poisson(30, n)
             z_candidates = random.poisson(30, m)
-           
-
+    
         elif self.distribution == "uniform":
             x_voters = random.uniform(0, 100, n)
             x_candidates = random.uniform(0, 100, m)
@@ -134,6 +133,19 @@ class VoteResult3D:
                 distances[candidate] = distance         
             sorted_dict = sorted(distances, key = distances.get)
             self.ballots.append(sorted_dict)
+            
+    def distortion(self,candidate): #Krishh distortion code
+        if not candidate:
+            return False
+            
+        sumDistance = 0 
+        for voter in self.voters:
+            distance = math.sqrt((voter.x - candidate.x) ** 2 + (voter.y - candidate.y) ** 2 + (voter.z - candidate.z)**2)
+            sumDistance += distance
+
+        
+        distortion = sumDistance / self.minDistance
+        return distortion
 
         
 def gen_file(ballots,num,voter_count): 
@@ -184,9 +196,12 @@ def main():
     candidate_num = 5
     voter_num = 1000
     test = VoteResult3D(voter_num, candidate_num, "2D", "normal") #this is num of voters, candidate, dimension, distribution
+    print(test.OPTcandidate)
     gen_file(test.ballots,candidate_num,voter_num) 
     data, header = remove_randoms('sim_ballots.csv',candidate_num)
     gen_altered(data,header)
+    
+    
             
 if __name__ == "__main__":  
     main()
