@@ -41,12 +41,12 @@ class VoteResult3D:
 
         #generate random coordinates of voters and candidates for different distributions
         if self.distribution == "normal":
-            x_voters = random.normal(35, 18,n)
-            x_candidates = random.normal(35, 18, m)
-            y_voters = random.normal(35, 18,n)
-            y_candidates = random.normal(35, 18, m)
-            z_voters = random.normal(35, 18,n)
-            z_candidates = random.normal(35, 18, m)
+            x_voters = random.normal(60, 20,n)
+            x_candidates = random.normal(60, 18, m)
+            y_voters = random.normal(60, 18,n)
+            y_candidates = random.normal(60, 18, m)
+            z_voters = random.normal(60, 18,n)
+            z_candidates = random.normal(60, 18, m)
             
             
         elif self.distribution == "poisson":
@@ -161,7 +161,7 @@ def gen_file(ballots,num,voter_count):
         temp_list = [vc]
         for c in ballots[vc]: 
             temp_list.append(c.id)
-        data.append(temp_list)
+        data.append(temp_list[:num+1])
         vc += 1
     
     with open(r'C:\Users\sagbo\Desktop\summer2026\mainresearch\sim_ballots.csv', 'w', newline='', encoding='utf-8') as file:
@@ -191,16 +191,341 @@ def gen_altered(data,header):
         writer = csv.writer(file)
         writer.writerow(header)
         writer.writerows(data)  
-        
-def main():
-    candidate_num = 5
-    voter_num = 1000
-    test = VoteResult3D(voter_num, candidate_num, "2D", "normal") #this is num of voters, candidate, dimension, distribution
-    print(test.OPTcandidate)
-    gen_file(test.ballots,candidate_num,voter_num) 
-    data, header = remove_randoms('sim_ballots.csv',candidate_num)
-    gen_altered(data,header)
+
+def simulate_copeland(ballots,candidates): 
+    from itertools import combinations
+    cand_index = {c: i for i, c in enumerate(candidates)}
+    n = len(candidates)
+    matrix = np.zeros((n, n))
     
+    for ballot, weight in ballots:
+        ranked = [c for c in ballot if c in cand_index]
+        
+        # Ranked candidates vs each other: order on the ballot determines the win
+        for c1, c2 in combinations(ranked, 2):
+            matrix[cand_index[c1]][cand_index[c2]] += weight
+    
+    scores = {c: 0 for c in candidates}
+    for c1, c2 in combinations(candidates, 2):
+        i, j = cand_index[c1], cand_index[c2]
+        if matrix[i][j] > matrix[j][i]:
+            scores[c1] += 1
+            scores[c2] -= 1
+        elif matrix[j][i] > matrix[i][j]:
+            scores[c2] += 1
+            scores[c1] -= 1
+    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    winner = sorted_scores[0][0]
+    #print(f"\nCopeland Winner: {winner}")
+    return winner
+
+def simulate_actual_plurality_veto(ballots, candidates):
+    scores = {c: 0 for c in candidates}
+    for ballot, weight in ballots:
+        ranked = [c for c in ballot if c in candidates]
+        if len(ranked) > 1:
+            vetoed = ranked[-1]
+            for c in ranked[:-1]:
+                scores[c] += weight
+        elif len(ranked) == 1:
+            scores[ranked[0]] += weight
+    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    winner = sorted_scores[0][0]
+    #print(f"Plurality Veto Winner: {winner}")
+    return winner
+
+def simulate_trunk_copeland_fast(ballots, candidates):
+    from itertools import combinations
+    cand_index = {c: i for i, c in enumerate(candidates)}
+    n = len(candidates)
+    matrix = np.zeros((n, n))
+        
+    for ballot, weight in ballots:
+        ranked = [c for c in ballot if c in cand_index]
+        unranked = [c for c in candidates if c not in ranked]
+            
+        # Ranked candidates vs each other: order on the ballot determines the win
+        for c1, c2 in combinations(ranked, 2):
+            matrix[cand_index[c1]][cand_index[c2]] += weight
+            
+        # Every ranked candidate beats every unranked candidate
+        for c1 in ranked:
+            for c2 in unranked:
+                matrix[cand_index[c1]][cand_index[c2]] += weight
+            
+        # Unranked vs unranked: no preference was expressed, so skip (tie)
+        
+    scores = {c: 0 for c in candidates}
+    for c1, c2 in combinations(candidates, 2):
+        i, j = cand_index[c1], cand_index[c2]
+        if matrix[i][j] > matrix[j][i]:
+            scores[c1] += 1
+            scores[c2] -= 1
+        elif matrix[j][i] > matrix[i][j]:
+            scores[c2] += 1
+            scores[c1] -= 1
+    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    #for candidate, score in sorted_scores:
+    #    print(f"  {candidate}: {score}")
+    winner = sorted_scores[0][0]
+    #print(f"\nCopeland Truncated Winner: {winner}")
+    return winner
+
+def simulate_equal_plurality_veto(ballots, candidates): 
+    cand_set = set(candidates)
+
+    scores = {c: 0 for c in candidates}
+    expanded_voters = []
+
+    for ballot, weight in ballots:
+        ranked = [c for c in ballot if c in cand_set]
+        if ranked:
+            scores[ranked[0]] += weight
+            for _ in range(weight):
+                expanded_voters.append(ranked)
+
+    standing = set(candidates)
+    elimination_order = []
+
+    for ranked_ballot in expanded_voters:
+        if len(standing) == 1:
+            break
+
+        ranked_set = set(ranked_ballot)
+        # Every standing candidate this voter left off their ballot is treated as equally "last" and gets vetoed simultaneously.
+        unranked_standing = standing - ranked_set
+
+        vetoed_this_pass = set(unranked_standing)
+
+        if not unranked_standing:
+            for c in reversed(ranked_ballot):
+                if c in standing:
+                    vetoed_this_pass = {c}
+                    break
+
+        for vetoed in vetoed_this_pass:
+            scores[vetoed] -= 1
+            if scores[vetoed] <= 0 and vetoed in standing:
+                standing.remove(vetoed)
+                elimination_order.append(vetoed)
+
+    if standing:
+        winner = list(standing)[0]
+    else:
+        winner = elimination_order[-1]
+    #print(f"Plurality Veto Eq Winner: {winner}")
+    return winner
+
+def simulate_stat_plurality_veto(ballots, candidates, last_place_counts):
+    
+    cand_set = set(candidates)
+
+    scores = {c: 0 for c in candidates}
+    expanded_voters = []
+
+    for ballot, weight in ballots:
+        ranked = [c for c in ballot if c in cand_set]
+        if ranked:
+            scores[ranked[0]] += weight
+            for _ in range(weight):
+                expanded_voters.append(ranked)
+
+    # Derive the denominator from the counts themselves 
+    # total last-place appearances across all candidates = total complete-ballot weight
+    total_last_place = sum(last_place_counts.get(c, 0) for c in candidates)
+
+    if total_last_place > 0:
+        last_place_pct = {
+            c: last_place_counts.get(c, 0) / total_last_place
+            for c in candidates
+        }
+    else:
+        last_place_pct = {c: 0.0 for c in candidates}
+
+    standing = set(candidates)
+    elimination_order = []
+
+    for ranked_ballot in expanded_voters:
+        if len(standing) == 1:
+            break
+
+        ranked_set = set(ranked_ballot)
+        unranked_standing = standing - ranked_set
+
+        vetoed_this_pass = set(unranked_standing)
+
+        if not unranked_standing:
+            for c in reversed(ranked_ballot):
+                if c in standing:
+                    vetoed_this_pass = {c}
+                    break
+
+        newly_eliminated = []
+        for vetoed in vetoed_this_pass:
+            scores[vetoed] -= 1
+            if scores[vetoed] <= 0 and vetoed in standing:
+                newly_eliminated.append(vetoed)
+
+        newly_eliminated.sort(key=lambda c: (-last_place_pct[c], c))
+
+        for c in newly_eliminated:
+            if c in standing:
+                standing.remove(c)
+                elimination_order.append(c)
+
+    if standing:
+        winner = list(standing)[0]
+    else:
+        winner = elimination_order[-1]
+    #print(f"Plurality Veto Stat Winner: {winner}")
+    return winner
+
+def count_votes(ballots, candidates):
+    """
+    Count the votes for the current round using weighted ballots.
+    Each ballot contributes its weight to the vote of the highest-ranked candidate
+    that hasn't been eliminated.
+    """
+    vote_counts = {candidate: 0 for candidate in candidates}
+    for ballot, weight in ballots:
+        for candidate in ballot:
+            if candidate in candidates:
+                vote_counts[candidate] += weight
+                break  # Only count the top remaining candidate.
+    return vote_counts
+
+def STV(ballots, candidates): 
+    round_num = 1
+    while True:
+        # Tally the weighted votes for this round.
+        vote_counts = count_votes(ballots, candidates)
+        total_votes = sum(vote_counts.values())
+        #print(f"Round {round_num} vote counts: {vote_counts} (Total active votes: {total_votes})")
+
+        # Check if any candidate has a majority (>50% of active votes)
+        for candidate, count in vote_counts.items():
+            if count > total_votes / 2:
+                #print(f"\nWinner: {candidate} with {count} votes (majority of {total_votes} active votes)!")
+                winner = candidate
+                return winner
+        else:
+            # No candidate has a majority; eliminate candidate(s) with the fewest votes.
+            min_votes = min(vote_counts.values())
+            eliminated = [candidate for candidate, count in vote_counts.items() if count == min_votes]
+            #print(f"Eliminated in round {round_num}: {eliminated}\n")
+            # Remove the eliminated candidate(s) from further consideration.
+            for candidate in eliminated:
+                candidates.remove(candidate)
+            
+            # If no candidates remain or all remaining are tied, declare a tie.
+            if not candidates:
+                return eliminated[-1]
+            elif len(vote_counts) == len(eliminated):
+                print("Election resulted in a tie among the remaining candidates:")
+                print(vote_counts)
+                return random.choice(candidates)
+
+            round_num += 1
+            continue
+        break
+    
+def full_ballot_sim(full_ballot): 
+    df = pd.read_csv(full_ballot)
+    ballots = [(list(row[1:]), 1) for row in df.values.tolist()]
+    from itertools import combinations
+    candidates = set()
+    for ballot, weight in ballots:
+        for candidate in ballot:
+            candidates.add(candidate)
+    candidates = list(candidates)
+    
+    copeland_winner = simulate_copeland(ballots, candidates)
+    plurality_veto_winner = simulate_actual_plurality_veto(ballots, candidates)
+    STV_winner = STV(ballots,candidates)
+    return copeland_winner, plurality_veto_winner, STV_winner
+
+def clean_ballot(row):
+    ranked = []
+    for c in row:
+        if pd.isna(c):
+            break
+        ranked.append(int(c))
+    return ranked
+
+def trunk_ballot_sim(trunk_ballots): 
+    from itertools import combinations
+    
+    last_place_counts = {
+    0 : 20,
+    1 : 0,
+    2 : 8,
+    3 : 0,
+    4 : 0
+    }  
+    
+    df = pd.read_csv(trunk_ballots)
+    rank_cols = ['1', '2', '3', '4', '5']
+    df_clean = df[df[rank_cols].notna().any(axis=1)] 
+    ballots = [(clean_ballot(row), 1) for row in df_clean[rank_cols].values.tolist()]
+    
+    candidates = set()
+    for ballot, weight in ballots:
+        for candidate in ballot:
+            candidates.add(candidate)
+    candidates = list(candidates)
+    
+    copeland_trunk = simulate_trunk_copeland_fast(ballots,candidates)
+    pl_eq_veto_trunk = simulate_equal_plurality_veto(ballots, candidates)
+    pl_st_veto_trunk = simulate_stat_plurality_veto(ballots,candidates,last_place_counts)
+    T_STV_winner = STV(ballots,candidates)
+    return copeland_trunk,pl_eq_veto_trunk, pl_st_veto_trunk, T_STV_winner
+
+def is_same(OPT,result): 
+    if OPT == result:
+        return 1
+    else: 
+        return 0
+def super_sim(c_num,v_num,trials):
+    n_cope_ls = []
+    n_pl_veto_ls = []
+    n_STV_ls = []
+    t_cope_ls = []
+    t_pl_eq_veto_ls = []
+    t_pl_st_veto_ls = []
+    t_STV_ls = []
+    
+    for i in range(0,trials):
+        test = VoteResult3D(v_num, c_num, "2D", "normal") #this is num of voters, candidate, dimension, distribution
+        #print("OPT", test.OPTcandidate)
+        gen_file(test.ballots,5,v_num) 
+        data, header = remove_randoms('sim_ballots.csv',c_num)
+        gen_altered(data,header)
+        
+        cope, pl_v,STVn = full_ballot_sim('sim_ballots.csv')
+        tcope, t_pl_eq, t_pl_st,stvt = trunk_ballot_sim('altered_ballots.csv')
+        
+        n_cope_ls.append(test.distortion(test.candidates[cope]))
+        n_pl_veto_ls.append(test.distortion(test.candidates[pl_v]))
+        n_STV_ls.append(test.distortion(test.candidates[STVn]))
+        t_cope_ls.append(test.distortion(test.candidates[tcope]))
+        t_pl_eq_veto_ls.append(test.distortion(test.candidates[t_pl_eq]))
+        t_pl_st_veto_ls.append(test.distortion(test.candidates[t_pl_st]))
+        t_STV_ls.append(test.distortion(test.candidates[stvt]))
+
+    print("Avg  N Cope Distortion: ", (sum(n_cope_ls)/trials))
+    print("Avg  N Pl Veto Distortion: ", (sum(n_pl_veto_ls)/trials))
+    print("Avg  N STV Distortion: ", (sum(n_STV_ls)/trials))
+    print("Avg  T Cope Distortion: ", (sum(t_cope_ls)/trials))
+    print("Avg  T Pl EQ Veto Distortion: ", (sum(t_pl_eq_veto_ls)/trials))
+    print("Avg  T Pl ST Veto Distortion: ", (sum(t_pl_st_veto_ls)/trials))
+    print("Avg  T STV Distortion: ", (sum(t_STV_ls)/trials))
+    
+def main():
+    candidate_num = 13
+    voter_num = 1000
+    trials = 50
+    super_sim(candidate_num,voter_num,trials)
+
     
             
 if __name__ == "__main__":  
