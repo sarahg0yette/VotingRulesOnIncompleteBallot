@@ -41,12 +41,12 @@ class VoteResult3D:
 
         #generate random coordinates of voters and candidates for different distributions
         if self.distribution == "normal":
-            x_voters = random.normal(60, 20,n)
-            x_candidates = random.normal(60, 18, m)
-            y_voters = random.normal(60, 18,n)
-            y_candidates = random.normal(60, 18, m)
-            z_voters = random.normal(60, 18,n)
-            z_candidates = random.normal(60, 18, m)
+            x_voters = random.normal(30, 20,n)
+            x_candidates = random.normal(30, 18, m)
+            y_voters = random.normal(30, 18,n)
+            y_candidates = random.normal(30, 18, m)
+            z_voters = random.normal(30, 18,n)
+            z_candidates = random.normal(30, 18, m)
             
             
         elif self.distribution == "poisson":
@@ -179,8 +179,10 @@ def remove_randoms(file,m):
         for row in reader:
             temp_list = []
             last_index = m + 1
-            if random.randint(0,2) == 0: 
-                last_index = (m + 1) - random.randint(0, m-1) #randomize how many candidates will be removed 
+            chance = random.random()
+            if chance >= .1: 
+                #print(chance)
+                last_index = (m) - random.randint(0, m-1) #randomize how many candidates will be removed'''
             temp_list = row[:last_index] 
             new_data.append(temp_list)
     
@@ -220,18 +222,62 @@ def simulate_copeland(ballots,candidates):
     return winner
 
 def simulate_actual_plurality_veto(ballots, candidates):
+    cand_set = set(candidates)
+
+    scores = {c: 0 for c in candidates}
+    expanded_voters = []
+    
+
+    for ballot, weight in ballots:
+        ranked = [c for c in ballot if c in cand_set]
+        scores[ranked[0]] += weight
+        for _ in range(weight):
+            expanded_voters.append(ranked)
+    random.shuffle(expanded_voters)
+        
+
+    standing = set(candidates)
+    elimination_order = []
+    
+
+    for ranked_ballot in expanded_voters:
+        if len(standing) == 1:
+            break
+
+        ranked_set = set(ranked_ballot)
+
+        
+        for c in reversed(ranked_ballot):
+            if c in standing:
+                vetoed_this_pass = {c}
+                break
+
+        for vetoed in vetoed_this_pass:
+            scores[vetoed] -= 1
+            if scores[vetoed] <= 0 and vetoed in standing:
+                standing.remove(vetoed)
+                elimination_order.append(vetoed)
+
+    if standing:
+        winner = list(standing)[0]
+    else:
+        winner = elimination_order[-1]
+    #print(f"Elimination order: {elimination_order}")
+    #print(f"Plurality Veto Winner: {winner}")
+    return winner
+
+def plurality(ballots,candidates): 
     scores = {c: 0 for c in candidates}
     for ballot, weight in ballots:
-        ranked = [c for c in ballot if c in candidates]
-        if len(ranked) > 1:
-            vetoed = ranked[-1]
-            for c in ranked[:-1]:
+        #print(candidates)
+        #print(ballot)
+        for c in ballot:
+            if c in candidates:
                 scores[c] += weight
-        elif len(ranked) == 1:
-            scores[ranked[0]] += weight
+                break
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     winner = sorted_scores[0][0]
-    #print(f"Plurality Veto Winner: {winner}")
+    #print(f"Plurality Winner: {winner}")
     return winner
 
 def simulate_trunk_copeland_fast(ballots, candidates):
@@ -441,8 +487,9 @@ def full_ballot_sim(full_ballot):
     
     copeland_winner = simulate_copeland(ballots, candidates)
     plurality_veto_winner = simulate_actual_plurality_veto(ballots, candidates)
-    STV_winner = STV(ballots,candidates)
-    return copeland_winner, plurality_veto_winner, STV_winner
+    PL_winner = plurality(ballots,candidates)
+    STV_winner = STV(ballots,candidates) #this is actually removing things from global variable
+    return copeland_winner, plurality_veto_winner, STV_winner, PL_winner
 
 def clean_ballot(row):
     ranked = []
@@ -464,7 +511,7 @@ def trunk_ballot_sim(trunk_ballots):
     }  
     
     df = pd.read_csv(trunk_ballots)
-    rank_cols = ['1', '2', '3', '4', '5']
+    rank_cols = ['1', '2', '3', '4'] #this needs to be manually updated
     df_clean = df[df[rank_cols].notna().any(axis=1)] 
     ballots = [(clean_ballot(row), 1) for row in df_clean[rank_cols].values.tolist()]
     
@@ -477,18 +524,21 @@ def trunk_ballot_sim(trunk_ballots):
     copeland_trunk = simulate_trunk_copeland_fast(ballots,candidates)
     pl_eq_veto_trunk = simulate_equal_plurality_veto(ballots, candidates)
     pl_st_veto_trunk = simulate_stat_plurality_veto(ballots,candidates,last_place_counts)
+    PL_winner = plurality(ballots,candidates)
     T_STV_winner = STV(ballots,candidates)
-    return copeland_trunk,pl_eq_veto_trunk, pl_st_veto_trunk, T_STV_winner
+    return copeland_trunk,pl_eq_veto_trunk, pl_st_veto_trunk, T_STV_winner, PL_winner
 
-def is_same(OPT,result): 
-    if OPT == result:
+def is_same(ideal,result): 
+    if int(ideal) == int(result):
         return 1
     else: 
         return 0
+    
 def super_sim(c_num,v_num,trials):
-    n_cope_ls = []
+    '''n_cope_ls = []
     n_pl_veto_ls = []
-    n_STV_ls = []
+    n_STV_ls = []'''
+    n_PL_ls = []
     t_cope_ls = []
     t_pl_eq_veto_ls = []
     t_pl_st_veto_ls = []
@@ -496,34 +546,37 @@ def super_sim(c_num,v_num,trials):
     
     for i in range(0,trials):
         test = VoteResult3D(v_num, c_num, "2D", "normal") #this is num of voters, candidate, dimension, distribution
-        #print("OPT", test.OPTcandidate)
-        gen_file(test.ballots,5,v_num) 
+        ideal = str(test.OPTcandidate)[10:]
+        gen_file(test.ballots,4,v_num) #here the 2nd number is how many candidates are being ranked
         data, header = remove_randoms('sim_ballots.csv',c_num)
         gen_altered(data,header)
         
-        cope, pl_v,STVn = full_ballot_sim('sim_ballots.csv')
-        tcope, t_pl_eq, t_pl_st,stvt = trunk_ballot_sim('altered_ballots.csv')
+        #cope, pl_v,STVn,PLn = full_ballot_sim('sim_ballots.csv')
+        tcope, t_pl_eq, t_pl_st,stvt,plt = trunk_ballot_sim('altered_ballots.csv')
         
-        n_cope_ls.append(test.distortion(test.candidates[cope]))
-        n_pl_veto_ls.append(test.distortion(test.candidates[pl_v]))
-        n_STV_ls.append(test.distortion(test.candidates[STVn]))
-        t_cope_ls.append(test.distortion(test.candidates[tcope]))
-        t_pl_eq_veto_ls.append(test.distortion(test.candidates[t_pl_eq]))
-        t_pl_st_veto_ls.append(test.distortion(test.candidates[t_pl_st]))
-        t_STV_ls.append(test.distortion(test.candidates[stvt]))
+        #print(ideal,cope,pl_v,STVn,tcope,t_pl_eq,t_pl_st,stvt)
+        '''n_cope_ls.append(is_same(ideal,cope))
+        n_pl_veto_ls.append(is_same(ideal,pl_v))
+        n_STV_ls.append(is_same(ideal,STVn))'''
+        n_PL_ls.append(is_same(ideal,plt))
+        t_cope_ls.append(is_same(ideal,tcope))
+        t_pl_eq_veto_ls.append(is_same(ideal,t_pl_eq))
+        t_pl_st_veto_ls.append(is_same(ideal,t_pl_st))
+        t_STV_ls.append(is_same(ideal,stvt))
 
-    print("Avg  N Cope Distortion: ", (sum(n_cope_ls)/trials))
-    print("Avg  N Pl Veto Distortion: ", (sum(n_pl_veto_ls)/trials))
-    print("Avg  N STV Distortion: ", (sum(n_STV_ls)/trials))
-    print("Avg  T Cope Distortion: ", (sum(t_cope_ls)/trials))
-    print("Avg  T Pl EQ Veto Distortion: ", (sum(t_pl_eq_veto_ls)/trials))
-    print("Avg  T Pl ST Veto Distortion: ", (sum(t_pl_st_veto_ls)/trials))
-    print("Avg  T STV Distortion: ", (sum(t_STV_ls)/trials))
+    '''print("Accuracy N COPE: ", (sum(n_cope_ls)/trials)) #right now just return raw number out of 100 runs got opt
+    print("Accuracy N PL VETO: ", sum(n_pl_veto_ls)/trials)
+    print("Accuracy  N STV : ", sum(n_STV_ls)/trials)'''
+    print("Accuracy  N PL : ", sum(n_PL_ls)/trials)
+    print("Accuracy  T Cope : ", sum(t_cope_ls)/trials)
+    print("Accuracy  T Pl EQ Veto : ", sum(t_pl_eq_veto_ls)/trials)
+    print("Accuracy  T Pl ST Veto : ", sum(t_pl_st_veto_ls)/trials)
+    print("Accuracy  T STV : ", sum(t_STV_ls)/trials)
     
 def main():
-    candidate_num = 13
+    candidate_num = 4
     voter_num = 1000
-    trials = 50
+    trials = 1000
     super_sim(candidate_num,voter_num,trials)
 
     
