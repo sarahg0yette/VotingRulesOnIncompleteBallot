@@ -180,7 +180,7 @@ def remove_randoms(file,m):
             temp_list = []
             last_index = m + 1
             chance = random.random()
-            if chance >= .1: 
+            '''if chance >= .9: #where we alter percent complete
                 #print(chance)
                 last_index = (m) - random.randint(0, m-1) #randomize how many candidates will be removed'''
             temp_list = row[:last_index] 
@@ -511,7 +511,7 @@ def trunk_ballot_sim(trunk_ballots):
     }  
     
     df = pd.read_csv(trunk_ballots)
-    rank_cols = ['1', '2', '3', '4'] #this needs to be manually updated
+    rank_cols = ['1', '2', '3', '4','5'] #this needs to be manually updated
     df_clean = df[df[rank_cols].notna().any(axis=1)] 
     ballots = [(clean_ballot(row), 1) for row in df_clean[rank_cols].values.tolist()]
     
@@ -533,21 +533,27 @@ def is_same(ideal,result):
         return 1
     else: 
         return 0
+
+def max_dist(ls,winner,test):
+    win_dist = test.distortion(test.candidates[winner])
+    if win_dist > ls[0]:
+        ls[0] = win_dist
+    return ls
     
 def super_sim(c_num,v_num,trials):
     '''n_cope_ls = []
     n_pl_veto_ls = []
     n_STV_ls = []'''
-    n_PL_ls = []
-    t_cope_ls = []
-    t_pl_eq_veto_ls = []
-    t_pl_st_veto_ls = []
-    t_STV_ls = []
+    n_PL_ls = [0] #initalized to 0 for this max_dist 
+    t_cope_ls = [0]
+    t_pl_eq_veto_ls = [0]
+    t_pl_st_veto_ls = [0]
+    t_STV_ls = [0]
     
     for i in range(0,trials):
         test = VoteResult3D(v_num, c_num, "2D", "normal") #this is num of voters, candidate, dimension, distribution
-        ideal = str(test.OPTcandidate)[10:]
-        gen_file(test.ballots,4,v_num) #here the 2nd number is how many candidates are being ranked
+        ideal = str(test.OPTcandidate)[10:] #making the ideal candidate object into a int
+        gen_file(test.ballots,5,v_num) #here the 2nd number is how many candidates are being ranked
         data, header = remove_randoms('sim_ballots.csv',c_num)
         gen_altered(data,header)
         
@@ -555,26 +561,22 @@ def super_sim(c_num,v_num,trials):
         tcope, t_pl_eq, t_pl_st,stvt,plt = trunk_ballot_sim('altered_ballots.csv')
         
         #print(ideal,cope,pl_v,STVn,tcope,t_pl_eq,t_pl_st,stvt)
-        '''n_cope_ls.append(is_same(ideal,cope))
-        n_pl_veto_ls.append(is_same(ideal,pl_v))
-        n_STV_ls.append(is_same(ideal,STVn))'''
-        n_PL_ls.append(is_same(ideal,plt))
-        t_cope_ls.append(is_same(ideal,tcope))
-        t_pl_eq_veto_ls.append(is_same(ideal,t_pl_eq))
-        t_pl_st_veto_ls.append(is_same(ideal,t_pl_st))
-        t_STV_ls.append(is_same(ideal,stvt))
+        n_PL_ls = max_dist(n_PL_ls,plt,test)
+        t_cope_ls = max_dist(t_cope_ls,tcope,test)
+        t_pl_eq_veto_ls = max_dist(t_pl_eq_veto_ls,t_pl_eq,test)
+        t_pl_st_veto_ls = max_dist(t_pl_st_veto_ls,t_pl_st,test)
+        t_STV_ls =  max_dist(t_STV_ls,stvt,test)
 
-    '''print("Accuracy N COPE: ", (sum(n_cope_ls)/trials)) #right now just return raw number out of 100 runs got opt
-    print("Accuracy N PL VETO: ", sum(n_pl_veto_ls)/trials)
-    print("Accuracy  N STV : ", sum(n_STV_ls)/trials)'''
-    print("Accuracy  N PL : ", sum(n_PL_ls)/trials)
-    print("Accuracy  T Cope : ", sum(t_cope_ls)/trials)
-    print("Accuracy  T Pl EQ Veto : ", sum(t_pl_eq_veto_ls)/trials)
-    print("Accuracy  T Pl ST Veto : ", sum(t_pl_st_veto_ls)/trials)
-    print("Accuracy  T STV : ", sum(t_STV_ls)/trials)
+
+    print("Max Dist  N PL : ", n_PL_ls[0])
+    print("Max Dist  T Cope : ", t_cope_ls[0])
+    print("Max Dist  T Pl EQ Veto : ", t_pl_eq_veto_ls[0])
+    print("Max Dist  T Pl ST Veto : ", t_pl_st_veto_ls[0])
+    print("Max Dist  T STV : ",  t_STV_ls[0])
     
 def main():
-    candidate_num = 4
+    #if changing the cand num need to change 578,550,514
+    candidate_num = 5
     voter_num = 1000
     trials = 1000
     super_sim(candidate_num,voter_num,trials)
