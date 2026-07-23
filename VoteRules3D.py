@@ -180,9 +180,9 @@ def remove_randoms(file,m):
             temp_list = []
             last_index = m + 1
             chance = random.random()
-            '''if chance >= .9: #where we alter percent complete
+            if chance >= 0: #where we alter percent complete ##comment this part out for 100% trials (SO > .6 MEANS 60% fully complete)
                 #print(chance)
-                last_index = (m) - random.randint(0, m-1) #randomize how many candidates will be removed'''
+                last_index = (m) - random.randint(0, m-1) #randomize how many candidates will be removed''' 
             temp_list = row[:last_index] 
             new_data.append(temp_list)
     
@@ -469,7 +469,7 @@ def STV(ballots, candidates):
             elif len(vote_counts) == len(eliminated):
                 print("Election resulted in a tie among the remaining candidates:")
                 print(vote_counts)
-                return random.choice(candidates)
+                return random.choice(candidates) #returns a random from the remaining candidates
 
             round_num += 1
             continue
@@ -576,7 +576,7 @@ def super_sim(c_num,v_num,trials):
     
 def main():
     #if changing the cand num need to change 578,550,514
-    candidate_num = 5
+    candidate_num = 13
     voter_num = 1000
     trials = 1000
     super_sim(candidate_num,voter_num,trials)
